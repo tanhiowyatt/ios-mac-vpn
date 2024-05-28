@@ -108,16 +108,16 @@ class MyViewController: UIViewController {
         switch tag {
         case 0:
             let main = MainViewController()
-            present(viewController2, animated: true, completion: nil)
+            present(main, animated: true, completion: nil)
         case 1:
-            let servers = ViewController3()
-            present(viewController3, animated: true, completion: nil)
+            let servers = ServersViewController()
+            present(servers, animated: true, completion: nil)
         case 2:
             let favorites = ViewController4()
             present(viewController4, animated: true, completion: nil)
         case 3:
-            let settings = ViewController4()
-            present(viewController4, animated: true, completion: nil)
+            let settings = SettingsViewController()
+            present(settings, animated: true, completion: nil)
         default:
             print("Invalid tag for ViewController")
         }
