@@ -5,9 +5,9 @@ class ServersViewController: UIViewController, UITableViewDataSource, UITableVie
     @IBOutlet weak var tableView: UITableView!
 
     var data = [
-        ["country": "United Stated", "image": "US.svg", "favorited": false, "selected": true],
+        ["country": "United States", "image": "US.svg", "favorited": false, "selected": true],
         ["country": "Russia", "image": "Russia.svg", "favorited": false, "selected": false],
-        ["country": "United Kingdome", "image": "UK.svg", "favorited": false, "selected": false]
+        ["country": "United Kingdom", "image": "UK.svg", "favorited": false, "selected": false],
         ["country": "Germany", "image": "Germany.svg", "favorited": false, "selected": false],
         ["country": "France", "image": "France.svg", "favorited": false, "selected": false],
         ["country": "Poland", "image": "Poland.svg", "favorited": false, "selected": false]
@@ -18,6 +18,7 @@ class ServersViewController: UIViewController, UITableViewDataSource, UITableVie
         tableView.dataSource = self
         tableView.delegate = self
         tableView.tableFooterView = UIView()
+        tableView.tableHeaderView = UIView(frame: CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 10))
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -28,25 +29,15 @@ class ServersViewController: UIViewController, UITableViewDataSource, UITableVie
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath) as! CustomCell
         let row = data[indexPath.row]
         cell.titleLabel.text = row["country"] as? String
-        cell.imageView.image = svgImageFromData(
-            svgData: NSData(contentsOfFile: String(row["image"]) as Data, size: CGSize(width: 100, height: 100)
-            )
-        )
-        cell.doneImageView.image = svgImageFromData(
-            svgData: NSData(
-                contentsOfFile: String(row["selected"] as Bool .false? "disabledCheckMark.svg" : "enabledCheckMark.svg") as Data,
-                size: CGSize(width: 100, height: 100)
-            )
-        )
+        cell.imageView.image = svgImageFromData(svgData: row["image"] as? String)
+        cell.doneImageView.image = svgImageFromData(svgData: row["selected"] as? Bool? "enabledCheckMark.svg" : "disabledCheckMark.svg")
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         data[indexPath.row]["selected"] = true
-        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath) as! CustomCell
-        cell.imageView.image = svgImageFromData(
-            svgData: NSData(contentsOfFile: String("enabledCheckMark.svg") as Data, size: CGSize(width: 100, height: 100))
-        )
+        let cell = tableView.cellForRow(at: indexPath) as! CustomCell
+        cell.doneImageView.image = svgImageFromData(svgData: "enabledCheckMark.svg")
         tableView.moveRow(at: indexPath, to: IndexPath(row: 0, section: 0))
         tableView.reloadRows(at: [IndexPath(row: 0, section: 0)], with:.automatic)
     }
