@@ -1,6 +1,6 @@
 import Cocoa
 
-class LanguageViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+class LanguagesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
     @IBOutlet weak var tableView: NSTableView!
 
