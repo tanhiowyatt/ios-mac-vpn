@@ -113,8 +113,8 @@ class MyViewController: UIViewController {
             let servers = ServersViewController()
             present(servers, animated: true, completion: nil)
         case 2:
-            let favorites = ViewController4()
-            present(viewController4, animated: true, completion: nil)
+            let favorites = FavoriteServersViewController()
+            present(favorites, animated: true, completion: nil)
         case 3:
             let settings = SettingsViewController()
             present(settings, animated: true, completion: nil)
