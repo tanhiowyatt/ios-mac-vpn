@@ -38,7 +38,7 @@ class TorManager {
     }
 
     func decryptData(using data: Data, circuit: Circuit) throws -> Data {
-        return data
+        return try torClient.decrypt(data: data, using: circuit)
     }
 
     func processDecryptedData(_ data: Data) {
@@ -59,6 +59,16 @@ class CircuitManager {
             self?.currentCircuit = circuit
             completion(circuit)
         }
+    }
+
+    func extendCircuit(_ circuit: Circuit, with node: Node) {
+        // Extend the circuit by adding a new node
+        circuit.nodes.append(node)
+    }
+
+    func closeCircuit(_ circuit: Circuit) {
+        // Close the circuit
+        circuit.nodes.removeAll()
     }
 }
 
@@ -87,56 +97,63 @@ class TorClient {
     let nodeManager: NodeManager
     let threadManager: ThreadManager
     let bridge: Bridge
+    let aes: AES
+    let sha256: SHA256
+    let curve25519: Curve25519
 
     init(bridge: Bridge) {
         socket = Socket()
         nodeManager = NodeManager()
         threadManager = ThreadManager()
         self.bridge = bridge
+        let aesKey = SymmetricKey(size:.bits256)
+        aes = AES.GCM(key: aesKey)
+        sha256 = SHA256()
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        let publicKey = privateKey.publicKey
+        curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
     }
 
     func configure(with config: [String: String]) {
-    bridge.address = config["bridgeAddress"]?? "obfs4.tor"
+        bridge.address = config["bridgeAddress"]?? "obfs4.tor"
 
-    if let aesKeyString = config["aesKey"] {
-        if let aesKeyData = Data(hexString: aesKeyString) {
-            let aesKey = SymmetricKey(data: aesKeyData)
-            aes = AES.GCM(key: aesKey)
+        if let aesKeyString = config["aesKey"] {
+            if let aesKeyData = Data(hexString: aesKeyString) {
+                let aesKey = SymmetricKey(data: aesKeyData)
+                aes = AES.GCM(key: aesKey)
+            } else {
+                print("Error: Invalid AES key")
+            }
         } else {
-            print("Error: Invalid AES key")
+            print("Error: AES key not provided")
         }
-    } else {
-        print("Error: AES key not provided")
-    }
 
-    sha256 = SHA256()
-
-    if let privateKeyString = config["curve25519PrivateKey"] {
-        if let privateKeyData = Data(hexString: privateKeyString) {
-            let privateKey = Curve25519.KeyAgreement.PrivateKey(x963Representation: privateKeyData)
-            let publicKey = privateKey.publicKey
-            curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
+        if let privateKeyString = config["curve25519PrivateKey"] {
+            if let privateKeyData = Data(hexString: privateKeyString) {
+                let privateKey = Curve25519.KeyAgreement.PrivateKey(x963Representation: privateKeyData)
+                let publicKey = privateKey.publicKey
+                curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
+            } else {
+                print("Error: Invalid Curve25519 private key")
+            }
         } else {
-            print("Error: Invalid Curve25519 private key")
+            print("Error: Curve25519 private key not provided")
         }
-    } else {
-        print("Error: Curve25519 private key not provided")
-    }
 
-    if let nodesString = config["nodes"] {
-        let nodes = nodesString.components(separatedBy: ",").compactMap { Node(id: Int($0)!, address: $0) }
-        nodeManager.nodes = nodes
-    } else {
-        print("Error: Nodes not provided")
-    }
+        if let nodesString = config["nodes"] {
+            let nodes = nodesString.components(separatedBy: ",").compactMap { Node(id: Int($0)!, address: $0) }
+            nodeManager.nodes = nodes
+        } else {
+            print("Error: Nodes not provided")
+        }
 
-    if let threadsString = config["threads"] {
-        let threads = threadsString.components(separatedBy: ",").compactMap { Thread(id: Int($0)!, node: Node(id: Int($0)!, address: $0)) }
-        threadManager.threads = threads
-    } else {
-        print("Error: Threads not provided")
+        if let threadsString = config["threads"] {
+            let threads = threadsString.components(separatedBy: ",").compactMap { Thread(id: Int($0)!, node: Node(id: Int($0)!, address: $0)) }
+            threadManager.threads = threads
+        } else {
+            print("Error: Threads not provided")
+        }
     }
-}
 
     func start() {
         bridge.connect()
@@ -149,7 +166,11 @@ class TorClient {
     }
 
     func decrypt(data: Data, using circuit: Circuit) -> Data {
-        return data
+        // Implement the actual decryption logic here
+        // For example:
+        let encryptedData = data
+        let decryptedData = try! aes.decrypt(encryptedData)
+        return decryptedData
     }
 }
 
@@ -163,6 +184,16 @@ class NodeManager {
     func getNodes() -> [Node] {
         return nodes
     }
+
+    func addNode(_ node: Node) {
+        nodes.append(node)
+    }
+
+    func removeNode(_ node: Node) {
+        if let index = nodes.firstIndex(of: node) {
+            nodes.remove(at: index)
+        }
+    }
 }
 
 class ThreadManager {
@@ -175,6 +206,16 @@ class ThreadManager {
     func getThreads() -> [Thread] {
         return threads
     }
+
+    func addThread(_ thread: Thread) {
+        threads.append(thread)
+    }
+
+    func removeThread(_ thread: Thread) {
+        if let index = threads.firstIndex(of: thread) {
+            threads.remove(at: index)
+        }
+    }
 }
 
 class Obsf4Bridge: Bridge {
@@ -182,6 +223,7 @@ class Obsf4Bridge: Bridge {
     let aes: AES
     let sha256: SHA256
     let curve25519: Curve25519
+    let socket: Socket
 
     init() {
         address = "obfs4.tor"
@@ -191,10 +233,10 @@ class Obsf4Bridge: Bridge {
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         let publicKey = privateKey.publicKey
         curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
+        socket = Socket()
     }
 
     func connect() {
-        let socket = Socket()
         socket.connect("obfs4.tor", port: 443)
         let handshakeMessage = "obfs4: Hello, world!"
         sendData(handshakeMessage.data(using:.utf8)!)
@@ -215,7 +257,32 @@ class Obsf4Bridge: Bridge {
     }
 
     func receiveData() -> Data? {
-        return nil
+        let bufferSize = 1024
+        let buffer = Data(capacity: bufferSize)
+        let bytesRead = socket.read(buffer)
+
+        if bytesRead <= 0 {
+            print("Error: Failed to read data from socket")
+            return nil
+        }
+
+        let encryptedData = buffer[0..<bytesRead]
+        let decryptedData = try! aes.decrypt(encryptedData)
+        let payload = decryptedData[headerSize..<decryptedData.count]
+        let expectedHash = decryptedData[0..<headerSize]
+        let actualHash = sha256.hash(payload)
+        if expectedHash!= actualHash {
+            print("Error: Payload integrity check failed")
+            return nil
+        }
+
+        let processData = processPayload(payload)
+        return processData
+    }
+
+    func processPayload(_ payload: Data) -> Data {
+        // Implement the actual payload processing logic here
+        return payload
     }
 }
 
