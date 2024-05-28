@@ -21,6 +21,9 @@ class MyViewController: UIViewController {
     }
 
     func setupButtons() {
+
+        btns = ["homeButton.svg", "serversButton.svg", "favoritesButton.svg", "settingsButton.svg"]
+
         for (index, button) in buttons.enumerated() {
             button.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(button)
@@ -30,9 +33,13 @@ class MyViewController: UIViewController {
                 button.widthAnchor.constraint(equalToConstant: 40),
                 button.heightAnchor.constraint(equalToConstant: 40)
             ])
-            button.setImage(UIImage(named: "button\(index + 1)"), for:.normal)
+            button.setImage(
+                svgImageFromData(
+                    svgData: NSData(contentsOfFile: String(btns[index])) as Data, size: CGSize(width: 100, height: 100)
+                ), for:.normal
+            )
             button.tag = index + 1
-            button.addTarget(self, action: #selector(buttonTapped(_:)), for:.touchUpInside)
+            button.addTarget(self, action: #selector(navButtonTapped(_:)), for:.touchUpInside)
         }
     }
 
@@ -70,19 +77,8 @@ class MyViewController: UIViewController {
         }
     }
 
-    @objc func buttonTapped(_ sender: UIButton) {
-        switch sender.tag {
-        case 1:
-            if userDefaults.bool(forKey: "accessGranted") {
-                startServerConnection()
-            } else {
-                print("Access denied")
-            }
-        case 2, 3, 4:
-            popViewController(sender.tag)
-        default:
-            print("Unknown button tapped")
-        }
+    @objc func navButtonTapped(_ sender: UIButton) {
+        popViewController(sender.tag)
     }
 
     func startServerConnection() {
@@ -110,14 +106,17 @@ class MyViewController: UIViewController {
 
     func popViewController(_ tag: Int) {
         switch tag {
-        case 2:
-            let viewController2 = ViewController2()
+        case 0:
+            let main = MainViewController()
             present(viewController2, animated: true, completion: nil)
-        case 3:
-            let viewController3 = ViewController3()
+        case 1:
+            let servers = ViewController3()
             present(viewController3, animated: true, completion: nil)
-        case 4:
-            let viewController4 = ViewController4()
+        case 2:
+            let favorites = ViewController4()
+            present(viewController4, animated: true, completion: nil)
+        case 3:
+            let settings = ViewController4()
             present(viewController4, animated: true, completion: nil)
         default:
             print("Invalid tag for ViewController")
