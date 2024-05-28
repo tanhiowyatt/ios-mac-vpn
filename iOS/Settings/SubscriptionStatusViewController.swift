@@ -6,25 +6,29 @@ class SubscriptionStatusViewController: UIViewController {
     @IBOutlet weak var promoCodeField: UITextField!
     @IBOutlet weak var promoCodeButton: UIButton!
     let dateFormatter = DateFormatter()
-    private let userDefaults = UserDefaults.standard
-    private let subscriptionEndTimeKey = "subscriptionEndTime"
+    private let secureStorage = KeychainSwift()
+    private let certificateKey = "subscriptionCertificate"
     private let accessGrantedKey = "accessGranted"
 
     var subscriptionEndTime: Date? {
         get {
-            return userDefaults.object(forKey: subscriptionEndTimeKey) as? Date
+            return secureStorage.get(certificateKey)?["endTime"] as? Date
         }
         set {
-            userDefaults.set(newValue, forKey: subscriptionEndTimeKey)
+            if let newValue = newValue {
+                secureStorage.set(["endTime": newValue], forKey: certificateKey)
+            } else {
+                secureStorage.delete(certificateKey)
+            }
         }
     }
 
     var accessGranted: Bool {
         get {
-            return userDefaults.bool(forKey: accessGrantedKey)
+            return secureStorage.getBool(accessGrantedKey)
         }
         set {
-            userDefaults.set(newValue, forKey: accessGrantedKey)
+            secureStorage.set(newValue, forKey: accessGrantedKey)
         }
     }
 
@@ -77,9 +81,9 @@ class SubscriptionStatusViewController: UIViewController {
     }
 
     func grantAccess() {
-        countdownLabel.isAccessible = false
+        countdownLabel.isHidden = false
         updateCountdown()
-        userDefaults.set(true, forKey: "accessGranted")
+        accessGranted = true
         let alertController = UIAlertController(title: "Success", message: "You have successfully redeemed your promo code and gained access to premium content.", preferredStyle:.alert)
         let okAction = UIAlertAction(title: "OK", style:.default, handler: nil)
         alertController.addAction(okAction)
@@ -87,7 +91,10 @@ class SubscriptionStatusViewController: UIViewController {
     }
 
     func updateSubscriptionEndTime() {
-        subscriptionEndTime = Date().addingTimeInterval(30 * 24 * 60 * 60)
+        let certificate = SubscriptionCertificate(endTime: Date().addingTimeInterval(30 * 24 * 60 * 60))
+        let certificateData = try! JSONEncoder().encode(certificate)
+        secureStorage.set(certificateData, forKey: certificateKey)
+        subscriptionEndTime = certificate.endTime
     }
 
     func dropVPNTunnel() {
@@ -104,6 +111,14 @@ class SubscriptionStatusViewController: UIViewController {
 
     func displayError(_ message: String) {
         print("Error: \(message)")
+    }
+}
+
+class SubscriptionCertificate: Codable {
+    let endTime: Date?
+
+    init(endTime: Date?) {
+        self.endTime = endTime
     }
 }
 

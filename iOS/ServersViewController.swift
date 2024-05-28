@@ -40,6 +40,8 @@ class ServersViewController: UIViewController, UITableViewDataSource, UITableVie
         cell.doneImageView.image = svgImageFromData(svgData: "enabledCheckMark.svg")
         tableView.moveRow(at: indexPath, to: IndexPath(row: 0, section: 0))
         tableView.reloadRows(at: [IndexPath(row: 0, section: 0)], with:.automatic)
+
+        UserDefaults.standard.set(indexPath.row.text, forKey: "selectedServer")
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
