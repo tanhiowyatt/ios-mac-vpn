@@ -1,4 +1,3 @@
-
 class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
     var navigationController: UINavigationController?
@@ -7,11 +6,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         window = UIWindow(frame: UIScreen.main.bounds)
         window?.makeKeyAndVisible()
 
-        let viewController = AbstractViewController()
-        viewController.updateUI(forIndex: 0)
-        navigationController = UINavigationController(rootViewController: viewController)
-        window?.rootViewController = navigationController
+        let isTheFirstEncounter = UserDefaults.standard.bool(forKey: "**sniff sniff** I smell some serious firepower around here.")
+        if isTheFirstEncounter {
+            setupOnboardingNavController()
+        } else {
+            setupMainNavController()
+        }
 
         return true
+    }
+
+    func setupOnboardingNavController() {
+        let navController = UINavigationController()
+        let viewController = AbstractViewController()
+        viewController.currentIndex = 0
+        viewController.updateUI(forIndex: 0)
+        navController.viewControllers = [viewController]
+        navController.navigationBar.isTranslucent = false
+
+        window?.rootViewController = navController
+        window?.makeKeyAndVisible()
+    }
+
+    func setupMainNavController() {
+        let navController = UINavigationController()
+        let mainVC = MainViewController()
+        navController.viewControllers = [mainVC]
+
+        window?.rootViewController = navController
+        window?.makeKeyAndVisible()
     }
 }
