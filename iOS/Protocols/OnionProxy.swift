@@ -76,12 +76,10 @@ class CircuitManager {
     }
 
     func extendCircuit(_ circuit: Circuit, with node: Node) {
-        // Extend the circuit by adding a new node
         circuit.nodes.append(node)
     }
 
     func closeCircuit(_ circuit: Circuit) {
-        // Close the circuit
         circuit.nodes.removeAll()
     }
 }
