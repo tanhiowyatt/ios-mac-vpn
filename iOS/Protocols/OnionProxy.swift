@@ -18,7 +18,8 @@ class TorManager {
 
     func routeTrafficThroughTor() {
         circuitManager.createNewCircuit { [weak self] circuit in
-            self?.sendRequestThroughCircuit(circuit)
+            guard let self = self else { return }
+            self.sendRequestThroughCircuit(circuit)
         }
     }
 
@@ -30,6 +31,7 @@ class TorManager {
         var request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 60.0)
         request.httpMethod = "GET"
         let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
             if let error = error {
                 print("Error: \(error)")
                 return
@@ -39,8 +41,8 @@ class TorManager {
                 return
             }
             do {
-                let decryptedData = try self?.decryptData(using: data, circuit: circuit)
-                self?.processDecryptedData(decryptedData ?? Data())
+                let decryptedData = try self.decryptData(using: data, circuit: circuit)
+                self.processDecryptedData(decryptedData)
             } catch {
                 print("Decryption error: \(error)")
             }
@@ -67,7 +69,8 @@ class CircuitManager {
 
     func createNewCircuit(completion: @escaping (Circuit) -> Void) {
         torClient.createCircuit { [weak self] circuit in
-            self?.currentCircuit = circuit
+            guard let self = self else { return }
+            self.currentCircuit = circuit
             completion(circuit)
         }
     }
@@ -132,38 +135,30 @@ class TorClient {
     func configure(with config: [String: String]) {
         bridge.address = config["bridgeAddress"] ?? "obfs4.tor"
 
-        if let aesKeyString = config["aesKey"] {
-            if let aesKeyData = Data(hexString: aesKeyString) {
-                let aesKey = SymmetricKey(data: aesKeyData)
-                aes = AES.GCM(key: aesKey)
-            } else {
-                print("Error: Invalid AES key")
-            }
+        if let aesKeyString = config["aesKey"], let aesKeyData = Data(hexString: aesKeyString) {
+            let aesKey = SymmetricKey(data: aesKeyData)
+            self.aes = AES.GCM(key: aesKey)
         } else {
-            print("Error: AES key not provided")
+            print("Error: AES key not provided or invalid")
         }
 
-        if let privateKeyString = config["curve25519PrivateKey"] {
-            if let privateKeyData = Data(hexString: privateKeyString) {
-                let privateKey = Curve25519.KeyAgreement.PrivateKey(x963Representation: privateKeyData)
-                let publicKey = privateKey.publicKey
-                curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
-            } else {
-                print("Error: Invalid Curve25519 private key")
-            }
+        if let privateKeyString = config["curve25519PrivateKey"], let privateKeyData = Data(hexString: privateKeyString) {
+            let privateKey = Curve25519.KeyAgreement.PrivateKey(rawRepresentation: privateKeyData)
+            let publicKey = privateKey.publicKey
+            self.curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
         } else {
-            print("Error: Curve25519 private key not provided")
+            print("Error: Curve25519 private key not provided or invalid")
         }
 
         if let nodesString = config["nodes"] {
-            let nodes = nodesString.components(separatedBy: ",").compactMap { Node(id: Int($0) ?? 0, address: $0) }
+            let nodes = nodesString.split(separator: ",").compactMap { Node(id: nodes.count + 1, address: String($0)) }
             nodeManager.nodes = nodes
         } else {
             print("Error: Nodes not provided")
         }
 
         if let threadsString = config["threads"] {
-            let threads = threadsString.components(separatedBy: ",").compactMap { Thread(id: Int($0) ?? 0, node: Node(id: Int($0) ?? 0, address: $0)) }
+            let threads = threadsString.split(separator: ",").compactMap { Thread(id: threads.count + 1, node: Node(id: threads.count + 1, address: String($0))) }
             threadManager.threads = threads
         } else {
             print("Error: Threads not provided")
@@ -203,9 +198,7 @@ class NodeManager {
     }
 
     func removeNode(_ node: Node) {
-        if let index = nodes.firstIndex(of: node) {
-            nodes.remove(at: index)
-        }
+        nodes.removeAll { $0 == node }
     }
 }
 
@@ -225,13 +218,11 @@ class ThreadManager {
     }
 
     func removeThread(_ thread: Thread) {
-        if let index = threads.firstIndex(of: thread) {
-            threads.remove(at: index)
-        }
+        threads.removeAll { $0 == thread }
     }
 }
 
-class Obsf4Bridge: Bridge {
+class Obfs4Bridge: Bridge {
     var address: String
     let aes: AES.GCM
     let sha256: SHA256
@@ -263,232 +254,50 @@ class Obsf4Bridge: Bridge {
     func sendData(_ data: Data) {
         do {
             let sealedBox = try aes.seal(data)
-            let encryptedData = sealedBox.combined!
-            let header = "obfs4: \(encryptedData.count)".data(using: .utf8)!
-            let sendData = header + encryptedData
-            socket.write(sendData)
+            let encryptedData = sealedBox.combined
+            socket.send(encryptedData)
         } catch {
-            print("Error encrypting data: \(error)")
+            print("Encryption error: \(error)")
         }
     }
 
     func receiveData() -> Data? {
-        let bufferSize = 1024
-        var buffer = Data(count: bufferSize)
-        let bytesRead = buffer.withUnsafeMutableBytes {
-            socket.read($0.bindMemory(to: UInt8.self).baseAddress!, maxLength: bufferSize)
-        }
-
-        if bytesRead <= 0 {
-            print("Error: Failed to read data from socket")
-            return nil
-        }
-
-        buffer = buffer.prefix(bytesRead)
+        guard let encryptedData = socket.receive() else { return nil }
         do {
-            let sealedBox = try AES.GCM.SealedBox(combined: buffer)
+            let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
             let decryptedData = try aes.open(sealedBox)
-            let payload = decryptedData
-            let expectedHash = sha256.hash(data: payload)
-            let actualHash = sha256.hash(data: payload)
-            if expectedHash != actualHash {
-                print("Error: Payload integrity check failed")
-                return nil
-            }
-
-            let processData = processPayload(payload)
-            return processData
+            return decryptedData
         } catch {
-            print("Error decrypting data: \(error)")
+            print("Decryption error: \(error)")
             return nil
         }
-    }
-
-    func processPayload(_ payload: Data) -> Data {
-        // Implement the actual payload processing logic here
-        return payload
-    }
-}
-
-class SnowflakeBridge: Bridge {
-    var address: String
-    let aes: AES.GCM
-    let sha256: SHA256
-    let socket: Socket
-
-    init() {
-        address = "snowflake.tor"
-        let aesKey = SymmetricKey(size: .bits256)
-        aes = AES.GCM(key: aesKey)
-        sha256 = SHA256()
-        socket = Socket()
-    }
-
-    func connect() {
-        socket.connect("snowflake.tor", port: 443)
-        let handshakeMessage = "snowflake: Hello, world!"
-        sendData(handshakeMessage.data(using: .utf8)!)
-        if let response = receiveData(), String(data: response, encoding: .utf8) == "snowflake: Hello, client!" {
-            print("Connected to Snowflake bridge")
-        } else {
-            print("Error: Handshake failed")
-        }
-    }
-
-    func sendData(_ data: Data) {
-        do {
-            let sealedBox = try aes.seal(data)
-            let encryptedData = sealedBox.combined!
-            let header = "snowflake: \(encryptedData.count)".data(using: .utf8)!
-            let sendData = header + encryptedData
-            socket.write(sendData)
-        } catch {
-            print("Error encrypting data: \(error)")
-        }
-    }
-
-    func receiveData() -> Data? {
-        let bufferSize = 1024
-        var buffer = Data(count: bufferSize)
-        let bytesRead = buffer.withUnsafeMutableBytes {
-            socket.read($0.bindMemory(to: UInt8.self).baseAddress!, maxLength: bufferSize)
-        }
-
-        if bytesRead <= 0 {
-            print("Error: Failed to read data from socket")
-            return nil
-        }
-
-        buffer = buffer.prefix(bytesRead)
-        do {
-            let sealedBox = try AES.GCM.SealedBox(combined: buffer)
-            let decryptedData = try aes.open(sealedBox)
-            let payload = decryptedData
-            let expectedHash = sha256.hash(data: payload)
-            let actualHash = sha256.hash(data: payload)
-            if expectedHash != actualHash {
-                print("Error: Payload integrity check failed")
-                return nil
-            }
-
-            let processData = processPayload(payload)
-            return processData
-        } catch {
-            print("Error decrypting data: \(error)")
-            return nil
-        }
-    }
-
-    func processPayload(_ payload: Data) -> Data {
-        // Implement the actual payload processing logic here
-        return payload
-    }
-}
-
-class MeekAzureBridge: Bridge {
-    var address: String
-    let aes: AES.GCM
-    let sha256: SHA256
-    let socket: Socket
-
-    init() {
-        address = "meek.azure.tor"
-        let aesKey = SymmetricKey(size: .bits256)
-        aes = AES.GCM(key: aesKey)
-        sha256 = SHA256()
-        socket = Socket()
-    }
-
-    func connect() {
-        socket.connect("meek.azure.tor", port: 443)
-        let handshakeMessage = "meekazure: Hello, world!"
-        sendData(handshakeMessage.data(using: .utf8)!)
-        if let response = receiveData(), String(data: response, encoding: .utf8) == "meekazure: Hello, client!" {
-            print("Connected to MeekAzure bridge")
-        } else {
-            print("Error: Handshake failed")
-        }
-    }
-
-    func sendData(_ data: Data) {
-        do {
-            let sealedBox = try aes.seal(data)
-            let encryptedData = sealedBox.combined!
-            let header = "meekazure: \(encryptedData.count)".data(using: .utf8)!
-            let sendData = header + encryptedData
-            socket.write(sendData)
-        } catch {
-            print("Error encrypting data: \(error)")
-        }
-    }
-
-    func receiveData() -> Data? {
-        let bufferSize = 1024
-        var buffer = Data(count: bufferSize)
-        let bytesRead = buffer.withUnsafeMutableBytes {
-            socket.read($0.bindMemory(to: UInt8.self).baseAddress!, maxLength: bufferSize)
-        }
-
-        if bytesRead <= 0 {
-            print("Error: Failed to read data from socket")
-            return nil
-        }
-
-        buffer = buffer.prefix(bytesRead)
-        do {
-            let sealedBox = try AES.GCM.SealedBox(combined: buffer)
-            let decryptedData = try aes.open(sealedBox)
-            let payload = decryptedData
-            let expectedHash = sha256.hash(data: payload)
-            let actualHash = sha256.hash(data: payload)
-            if expectedHash != actualHash {
-                print("Error: Payload integrity check failed")
-                return nil
-            }
-
-            let processData = processPayload(payload)
-            return processData
-        } catch {
-            print("Error decrypting data: \(error)")
-            return nil
-        }
-    }
-
-    func processPayload(_ payload: Data) -> Data {
-        // Implement the actual payload processing logic here
-        return payload
-    }
-}
-
-class Thread {
-    let id: Int
-    let node: Node
-
-    init(id: Int, node: Node) {
-        self.id = id
-        self.node = node
-    }
-}
-
-class Socket {
-    func connect(_ host: String, port: Int) {
-        print("Connecting to \(host):\(port)")
-    }
-
-    func write(_ data: Data) {
-        print("Writing data: \(data)")
-    }
-
-    func read(_ buffer: UnsafeMutableRawPointer, maxLength: Int) -> Int {
-        // Simulate reading data from the socket
-        // This should be replaced with actual socket read logic
-        return 0
     }
 }
 
 protocol Bridge {
     var address: String { get set }
+    var aes: AES.GCM { get }
+    var sha256: SHA256 { get }
+    var curve25519: Curve25519 { get }
+
     func connect()
+    func sendData(_ data: Data)
+    func receiveData() -> Data?
+}
+
+class Socket {
+    func connect(_ address: String, port: Int) {
+        print("Connecting to \(address) on port \(port)")
+    }
+
+    func send(_ data: Data) {
+        print("Sending data: \(data)")
+    }
+
+    func receive() -> Data? {
+        let response = "obfs4: Hello, client!".data(using: .utf8)
+        return response
+    }
 }
 
 class Curve25519 {
@@ -501,18 +310,6 @@ class Curve25519 {
     }
 }
 
-extension Curve25519.KeyAgreement.PublicKey: ExpressibleByArrayLiteral {
-    public init(arrayLiteral elements: UInt8...) {
-        self = try! Curve25519.KeyAgreement.PublicKey(rawRepresentation: Data(elements))
-    }
-}
-
-extension Curve25519.KeyAgreement.PrivateKey: ExpressibleByArrayLiteral {
-    public init(arrayLiteral elements: UInt8...) {
-        self = try! Curve25519.KeyAgreement.PrivateKey(rawRepresentation: Data(elements))
-    }
-}
-
 extension Data {
     init?(hexString: String) {
         let length = hexString.count / 2
@@ -520,13 +317,40 @@ extension Data {
         var index = hexString.startIndex
         for _ in 0..<length {
             let nextIndex = hexString.index(index, offsetBy: 2)
-            if let byte = UInt8(hexString[index..<nextIndex], radix: 16) {
-                data.append(byte)
-            } else {
+            guard let byte = UInt8(hexString[index..<nextIndex], radix: 16) else {
                 return nil
             }
+            data.append(byte)
             index = nextIndex
         }
         self = data
     }
 }
+
+struct Thread: Equatable {
+    let id: Int
+    let node: Node
+
+    static func == (lhs: Thread, rhs: Thread) -> Bool {
+        return lhs.id == rhs.id && lhs.node == rhs.node
+    }
+}
+
+// Configuration and initialization example
+let bridge = Obfs4Bridge()
+let torClient = TorClient(bridge: bridge)
+let circuitManager = CircuitManager(torClient: torClient)
+let torManager = TorManager(torClient: torClient, circuitManager: circuitManager)
+
+let config: [String: String] = [
+    "bridgeAddress": "obfs4.tor",
+    "aesKey": "your-aes-key",
+    "curve25519PrivateKey": "your-curve25519-private-key",
+    "nodes": "localhost,node2.tor",
+    "threads": "1,2"
+]
+
+torClient.configure(with: config)
+torClient.start()
+
+torManager.routeTrafficThroughTor()
