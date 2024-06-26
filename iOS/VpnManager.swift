@@ -1,44 +1,36 @@
-import CFNetwork
-import NetworkExtension
-
 class VPNManager {
-    let vpnManager = NEVPNManager.shared()
-    let passwordRef: Data
+    var vpnProtocol: VPNProtocol?
 
-    init(password: String) {
-        passwordRef = password.data(using:.utf8)!
-    }
+    func startVPN(protocol: String) {
+        switch protocol {
+        case "wireguard":
+            vpnProtocol = WireGuardVPNProtocol()
+        case "tor":
+            let bridge = Obfs4Bridge()
+            let torClient = TorClient(bridge: bridge)
+            let circuitManager = CircuitManager(torClient: torClient)
+            let torManager = TorManager(torClient: torClient, circuitManager: circuitManager)
+            vpnProtocol = TorVPNProtocol(torManager: torManager)
+        default:
+            print("Unsupported protocol")
+        }
 
-    func startVPN() {
-        let vpnProtocol = NEVPNProtocol()
-        vpnProtocol.providerBundleIdentifier = "com.example.vpn"
-        vpnProtocol.serverAddress = "your-proxy-server-url.com"
-        vpnProtocol.username = "username"
-        vpnProtocol.passwordReference = passwordRef
-        vpnProtocol.authenticationMethod =.none
-        vpnProtocol.useExtendedAuthentication = true
-        let chacha20Encryption = NEVPNCrypto()
-        chacha20Encryption.encryptionAlgorithm =.chacha20
-        chacha20Encryption.integrityAlgorithm =.poly1305
-        vpnProtocol.crypto = chacha20Encryption
-        vpnManager.loadFromPreferences { error in
-            if let error = error {
-                print("Error loading VPN preferences: \(error)")
-                return
-            }
-            self.vpnManager.protocolConfiguration = vpnProtocol
-            self.vpnManager.isOnDemandEnabled = true
-            self.vpnManager.saveToPreferences { error in
-                if let error = error {
-                    print("Error saving VPN preferences: \(error)")
-                    return
-                }
-                self.vpnManager.startVPNTunnel()
+        vpnProtocol?.connect { success in
+            if success {
+                print("VPN connected successfully")
+            } else {
+                print("Failed to connect VPN")
             }
         }
     }
 
     func stopVPN() {
-        vpnManager.stopVPNTunnel()
+        vpnProtocol?.disconnect { success in
+            if success {
+                print("VPN disconnected successfully")
+            } else {
+                print("Failed to disconnect VPN")
+            }
+        }
     }
 }

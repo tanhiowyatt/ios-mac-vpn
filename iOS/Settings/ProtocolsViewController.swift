@@ -1,10 +1,11 @@
 import UIKit
 
-class ProtocolsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+class ProtocolsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, TorBridgeSelectionDelegate {
 
     @IBOutlet weak var tableView: UITableView!
 
-    let protocols = ["AmneziaWG Protocol", "Xray Protocol", "ShadowSocks Protocol", "Cloak Protocol"]
+    let protocols = ["AmneziaWG", "ShadowSocks", "Tor Onion"]
+    var torManager: TorManager?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -23,4 +24,27 @@ class ProtocolsViewController: UIViewController, UITableViewDataSource, UITableV
         cell.textLabel?.text = protocols[indexPath.row]
         return cell
     }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let selectedProtocol = protocols[indexPath.row]
+        if selectedProtocol == "Tor Onion" {
+            showTorBridgeSelectionView()
+        } else {
+            // Handle other protocol selections
+            print("\(selectedProtocol) selected")
+        }
+    }
+
+    private func showTorBridgeSelectionView() {
+        let torBridgeSelectionView = TorBridgeSelectionView(frame: view.bounds)
+        torBridgeSelectionView.delegate = self
+        view.addSubview(torBridgeSelectionView)
+    }
+
+    func didChooseBridge(_ bridge: String) {
+        // Pass the selected bridge to the TorManager
+        torManager?.configure(with: ["bridge": bridge])
+        print("Selected bridge: \(bridge)")
+    }
 }
+
