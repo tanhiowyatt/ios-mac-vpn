@@ -1,54 +1,73 @@
 import Foundation
-import CryptoKit
 
-class MeekAzureBridge: Bridge {
-    var address: String
-    let aes: AES.GCM
-    let sha256: SHA256
-    let curve25519: Curve25519
+class MeekAzureBridge {
+    let address: String
+    let encryptor: Encryptor
     let socket: Socket
 
     init() {
         address = "meek.azure"
-        let aesKey = SymmetricKey(size: .bits256)
-        aes = AES.GCM(key: aesKey)
-        sha256 = SHA256()
-        let privateKey = Curve25519.KeyAgreement.PrivateKey()
-        let publicKey = privateKey.publicKey
-        curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
-        socket = Socket()
+        encryptor = Encryptor()
+        socket = Socket(address: "meek.azure", port: 443)
     }
 
-    func connect() {
-        socket.connect("meek.azure", port: 443)
+    func connect(completion: @escaping (Result<Void, Error>) -> Void) {
         let handshakeMessage = "meek: Hello, world!"
-        sendData(handshakeMessage.data(using: .utf8)!)
-        if let response = receiveData(), String(data: response, encoding: .utf8) == "meek: Hello, client!" {
-            print("Connected to Meek Azure bridge")
-        } else {
-            print("Error: Handshake failed")
+        sendData(handshakeMessage.data(using: .utf8)!) { result in
+            switch result {
+            case .success:
+                self.receiveData { result in
+                    switch result {
+                    case .success(let response):
+                        if String(data: response, encoding: .utf8) == "meek: Hello, client!" {
+                            print("Connected to Meek Azure bridge")
+                            completion(.success(()))
+                        } else {
+                            completion(.failure(BridgeError.handshakeFailed))
+                        }
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
     }
 
-    func sendData(_ data: Data) {
+    func sendData(_ data: Data, completion: @escaping (Result<Void, Error>) -> Void) {
         do {
-            let sealedBox = try aes.seal(data)
-            let encryptedData = sealedBox.combined
-            socket.send(encryptedData)
+            let encryptedData = try encryptor.encrypt(data: data)
+            socket.write(encryptedData) { result in
+                switch result {
+                case .success:
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
         } catch {
-            print("Encryption error: \(error)")
+            completion(.failure(error))
         }
     }
 
-    func receiveData() -> Data? {
-        guard let encryptedData = socket.receive() else { return nil }
-        do {
-            let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
-            let decryptedData = try aes.open(sealedBox)
-            return decryptedData
-        } catch {
-            print("Decryption error: \(error)")
-            return nil
+    func receiveData(completion: @escaping (Result<Data, Error>) -> Void) {
+        socket.read { result in
+            switch result {
+            case .success(let encryptedData):
+                do {
+                    let decryptedData = try encryptor.decrypt(data: encryptedData)
+                    completion(.success(decryptedData))
+                } catch {
+                    completion(.failure(error))
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
     }
+}
+
+enum BridgeError: Error {
+    case handshakeFailed
 }

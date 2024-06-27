@@ -1,25 +1,47 @@
-import Foundation
-import CryptoKit
-
 class TorManager {
     let torClient: TorClient
     let urlSession: URLSession
     let circuitManager: CircuitManager
+    let onionRouter: OnionRouter
+    let encryptor: Encryptor
 
-    enum TorManagerError: Error {
-        case invalidURL
-    }
-
-    init(torClient: TorClient, urlSession: URLSession = URLSession.shared, circuitManager: CircuitManager) {
+    init(torClient: TorClient, urlSession: URLSession = URLSession.shared, circuitManager: CircuitManager, onionRouter: OnionRouter, encryptor: Encryptor) {
         self.torClient = torClient
         self.urlSession = urlSession
         self.circuitManager = circuitManager
+        self.onionRouter = onionRouter
+        self.encryptor = encryptor
     }
 
-    func routeTrafficThroughTor() {
-        circuitManager.createNewCircuit { [weak self] circuit in
+    func routeTrafficThroughTor(using bridgeType: String) {
+        var bridge: Bridge
+        switch bridgeType {
+        case "Obfs4":
+            bridge = Obfs4Bridge(torClient: torClient, circuitManager: circuitManager, encryptor: encryptor)
+        case "Meek Azure":
+            bridge = MeekAzureBridge()
+        case "Snowflake":
+            bridge = SnowflakeBridge()
+        default:
+            print("Unknown bridge type")
+            return
+        }
+        
+        bridge.connect { [weak self] result in
             guard let self = self else { return }
-            self.sendRequestThroughCircuit(circuit)
+            switch result {
+            case .success:
+                self.circuitManager.createNewCircuit { result in
+                    switch result {
+                    case .success(let circuit):
+                        self.sendRequestThroughCircuit(circuit)
+                    case .failure(let error):
+                        print("Circuit creation failed: \(error)")
+                    }
+                }
+            case .failure(let error):
+                print("Bridge connection failed: \(error)")
+            }
         }
     }
 
@@ -30,6 +52,7 @@ class TorManager {
         }
         var request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 60.0)
         request.httpMethod = "GET"
+        request.allHTTPHeaderFields = self.onionRouter.createOnionRoutingHeaders(for: circuit)
         let task = urlSession.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
             if let error = error {
@@ -51,10 +74,11 @@ class TorManager {
     }
 
     func decryptData(using data: Data, circuit: Circuit) throws -> Data {
-        return try torClient.decrypt(data: data, using: circuit)
+        let decryptedData = try torClient.decrypt(data: data, using: circuit)
+        return decryptedData
     }
 
     func processDecryptedData(_ data: Data) {
-        print("Decrypted data: \(data)")
+        // Process the decrypted data
     }
 }

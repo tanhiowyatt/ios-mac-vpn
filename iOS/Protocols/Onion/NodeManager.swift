@@ -1,16 +1,12 @@
 import Foundation
 
-class Node: Equatable {
-    let id: Int
+class Node {
+    let publicKey: String
     let address: String
 
-    init(id: Int, address: String) {
-        self.id = id
+    init(publicKey: String, address: String) {
+        self.publicKey = publicKey
         self.address = address
-    }
-
-    static func == (lhs: Node, rhs: Node) -> Bool {
-        return lhs.id == rhs.id && lhs.address == rhs.address
     }
 }
 

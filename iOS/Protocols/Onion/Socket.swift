@@ -1,16 +1,33 @@
 import Foundation
+import Network
 
 class Socket {
-    func connect(_ host: String, port: Int) {
-        print("Connecting to \(host) on port \(port)")
+    private let connection: NWConnection
+
+    init(address: String, port: UInt16) {
+        let host = NWEndpoint.Host(address)
+        let port = NWEndpoint.Port(rawValue: port)!
+        connection = NWConnection(host: host, port: port, using: .tcp)
+        connection.start(queue: .main)
     }
 
-    func send(_ data: Data) {
-        print("Sending data: \(data)")
+    func write(_ data: Data, completion: @escaping (Result<Void, Error>) -> Void) {
+        connection.send(content: data, completion: .contentProcessed { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        })
     }
 
-    func receive() -> Data? {
-        let response = "obfs4: Hello, client!".data(using: .utf8)
-        return response
+    func read(completion: @escaping (Result<Data, Error>) -> Void) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, _, error in
+            if let data = data {
+                completion(.success(data))
+            } else if let error = error {
+                completion(.failure(error))
+            }
+        }
     }
 }

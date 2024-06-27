@@ -1,54 +1,73 @@
 import Foundation
-import CryptoKit
 
 class SnowflakeBridge: Bridge {
-    var address: String
-    let aes: AES.GCM
-    let sha256: SHA256
-    let curve25519: Curve25519
+    let address: String
+    let encryptor: Encryptor
     let socket: Socket
 
     init() {
-        address = "snowflake.tor"
-        let aesKey = SymmetricKey(size: .bits256)
-        aes = AES.GCM(key: aesKey)
-        sha256 = SHA256()
-        let privateKey = Curve25519.KeyAgreement.PrivateKey()
-        let publicKey = privateKey.publicKey
-        curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
-        socket = Socket()
+        address = "snowflake.torproject.net"
+        encryptor = Encryptor()
+        socket = Socket(address: address, port: 443)
     }
 
-    func connect() {
-        socket.connect("snowflake.tor", port: 443)
-        let handshakeMessage = "snowflake: Hello, world!"
-        sendData(handshakeMessage.data(using: .utf8)!)
-        if let response = receiveData(), String(data: response, encoding: .utf8) == "snowflake: Hello, client!" {
-            print("Connected to Snowflake bridge")
-        } else {
-            print("Error: Handshake failed")
+    func connect(completion: @escaping (Result<Void, Error>) -> Void) {
+        socket.connect(address, port: 443) { result in
+            switch result {
+            case .success:
+                let handshakeMessage = "snowflake: Hello, world!"
+                self.sendData(handshakeMessage.data(using: .utf8)!) { result in
+                    switch result {
+                    case .success:
+                        if let response = self.receiveData(), String(data: response, encoding: .utf8) == "snowflake: Hello, client!" {
+                            print("Connected to Snowflake bridge")
+                            completion(.success(()))
+                        } else {
+                            completion(.failure(BridgeError.handshakeFailed))
+                        }
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
     }
 
-    func sendData(_ data: Data) {
+    func sendData(_ data: Data, completion: @escaping (Result<Void, Error>) -> Void) {
         do {
-            let sealedBox = try aes.seal(data)
-            let encryptedData = sealedBox.combined
-            socket.send(encryptedData)
+            let encryptedData = try encryptor.encrypt(data: data)
+            socket.send(encryptedData) { result in
+                switch result {
+                case .success:
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
         } catch {
-            print("Encryption error: \(error)")
+            completion(.failure(error))
         }
     }
 
-    func receiveData() -> Data? {
-        guard let encryptedData = socket.receive() else { return nil }
-        do {
-            let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
-            let decryptedData = try aes.open(sealedBox)
-            return decryptedData
-        } catch {
-            print("Decryption error: \(error)")
-            return nil
+    func receiveData(completion: @escaping (Result<Data, Error>) -> Void) {
+        socket.receive { result in
+            switch result {
+            case .success(let encryptedData):
+                do {
+                    let decryptedData = try encryptor.decrypt(data: encryptedData)
+                    completion(.success(decryptedData))
+                } catch {
+                    completion(.failure(error))
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
     }
+}
+
+enum BridgeError: Error {
+    case handshakeFailed
 }

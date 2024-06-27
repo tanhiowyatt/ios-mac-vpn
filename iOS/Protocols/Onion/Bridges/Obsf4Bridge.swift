@@ -1,54 +1,59 @@
 import Foundation
-import CryptoKit
 
-class Obfs4Bridge: Bridge {
-    var address: String
-    let aes: AES.GCM
-    let sha256: SHA256
-    let curve25519: Curve25519
-    let socket: Socket
+class Obsf4Bridge {
+    let torClient: TorClient
+    let circuitManager: CircuitManager
+    let encryptor: Encryptor
 
-    init() {
-        address = "obfs4.tor"
-        let aesKey = SymmetricKey(size: .bits256)
-        aes = AES.GCM(key: aesKey)
-        sha256 = SHA256()
-        let privateKey = Curve25519.KeyAgreement.PrivateKey()
-        let publicKey = privateKey.publicKey
-        curve25519 = Curve25519(privateKey: privateKey, publicKey: publicKey)
-        socket = Socket()
+    init(torClient: TorClient, circuitManager: CircuitManager, encryptor: Encryptor) {
+        self.torClient = torClient
+        self.circuitManager = circuitManager
+        self.encryptor = encryptor
     }
 
-    func connect() {
-        socket.connect("obfs4.tor", port: 443)
-        let handshakeMessage = "obfs4: Hello, world!"
-        sendData(handshakeMessage.data(using: .utf8)!)
-        if let response = receiveData(), String(data: response, encoding: .utf8) == "obfs4: Hello, client!" {
-            print("Connected to Obfs4 bridge")
-        } else {
-            print("Error: Handshake failed")
+    func establishObsf4Bridge(completion: @escaping (Result<Void, Error>) -> Void) {
+        // Create a new circuit
+        circuitManager.createNewCircuit { result in
+            switch result {
+            case .success(let circuit):
+                // Establish the Obsf4 bridge on the circuit
+                self.torClient.establishCircuit(circuit) { result in
+                    switch result {
+                    case .success:
+                        // Configure the Obsf4 bridge
+                        self.configureObsf4Bridge(on: circuit)
+                        completion(.success(()))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
     }
 
-    func sendData(_ data: Data) {
-        do {
-            let sealedBox = try aes.seal(data)
-            let encryptedData = sealedBox.combined
-            socket.send(encryptedData)
-        } catch {
-            print("Encryption error: \(error)")
+    func closeObsf4Bridge(completion: @escaping (Result<Void, Error>) -> Void) {
+        // Get the current circuit
+        guard let circuit = circuitManager.getCircuit(with: UUID()) else {
+            completion(.failure(Obsf4BridgeError.noCircuit))
+            return
         }
+
+        // Close the Obsf4 bridge on the circuit
+        self.torClient.closeCircuit(circuit)
+        completion(.success(()))
     }
 
-    func receiveData() -> Data? {
-        guard let encryptedData = socket.receive() else { return nil }
-        do {
-            let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
-            let decryptedData = try aes.open(sealedBox)
-            return decryptedData
-        } catch {
-            print("Decryption error: \(error)")
-            return nil
-        }
+    private func configureObsf4Bridge(on circuit: Circuit) {
+        // Configure the Obsf4 bridge on the circuit
+        // This method is not implemented as it depends on the specific requirements of the Obsf4 bridge
+        // However, it can be used to perform any necessary setup or configuration for the Obsf4 bridge
+        // such as exchanging encryption keys, negotiating parameters, or establishing a secure connection
+        // using the Encryptor object
     }
+}
+
+enum Obsf4BridgeError: Error {
+    case noCircuit
 }

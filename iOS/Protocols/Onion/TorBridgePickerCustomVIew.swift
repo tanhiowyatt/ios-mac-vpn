@@ -8,7 +8,7 @@ class TorBridgeSelectionView: UIView, UITableViewDataSource, UITableViewDelegate
 
     private let tableView = UITableView()
     private let okButton = UIButton()
-    private let bridges = ["Obfs4", "Meek Azure", "Snowflake"]
+    private let bridges = ["Obfs4", "Meek Azure", "Snowflake", "Input Custom Bridge"]
     private var selectedBridge: String?
     weak var delegate: TorBridgeSelectionDelegate?
 
@@ -76,7 +76,7 @@ class TorBridgeSelectionView: UIView, UITableViewDataSource, UITableViewDelegate
             textField.placeholder = "Bridge URL"
         }
         let confirmAction = UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-            if let bridgeURL = alertController.textFields?.first?.text {
+            if let bridgeURL = alertController.textFields?.first?.text, !bridgeURL.isEmpty {
                 self?.selectedBridge = bridgeURL
             }
         }

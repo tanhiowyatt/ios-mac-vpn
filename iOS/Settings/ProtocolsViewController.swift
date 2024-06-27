@@ -4,6 +4,7 @@ class ProtocolsViewController: UIViewController, UITableViewDataSource, UITableV
 
     @IBOutlet weak var tableView: UITableView!
 
+    let torManager = TorManager(torClient: TorClient(), circuitManager: CircuitManager(), onionRouter: OnionRouter(), encryptor: Encryptor())
     let protocols = ["AmneziaWG", "ShadowSocks", "Tor Onion"]
     var torManager: TorManager?
 
@@ -13,6 +14,16 @@ class ProtocolsViewController: UIViewController, UITableViewDataSource, UITableV
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
+    }
+
+    func didChooseBridge(_ bridge: String) {
+        torManager.routeTrafficThroughTor(using: bridge)
+    }
+
+    func showBridgeSelection() {
+        let bridgeSelectionView = TorBridgeSelectionView(frame: view.bounds)
+        bridgeSelectionView.delegate = self
+        view.addSubview(bridgeSelectionView)
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -30,19 +41,11 @@ class ProtocolsViewController: UIViewController, UITableViewDataSource, UITableV
         if selectedProtocol == "Tor Onion" {
             showTorBridgeSelectionView()
         } else {
-            // Handle other protocol selections
             print("\(selectedProtocol) selected")
         }
     }
 
-    private func showTorBridgeSelectionView() {
-        let torBridgeSelectionView = TorBridgeSelectionView(frame: view.bounds)
-        torBridgeSelectionView.delegate = self
-        view.addSubview(torBridgeSelectionView)
-    }
-
     func didChooseBridge(_ bridge: String) {
-        // Pass the selected bridge to the TorManager
         torManager?.configure(with: ["bridge": bridge])
         print("Selected bridge: \(bridge)")
     }
