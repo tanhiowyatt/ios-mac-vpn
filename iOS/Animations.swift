@@ -1,58 +1,185 @@
 import UIKit
 
 class GlowingButton: UIButton {
-    private let animationDuration: timeInterval = 0.786
+
+    private var isAnimating = false
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupGlowEffect()
+        setupButton()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setupGlowEffect()
+        setupButton()
     }
 
-    private func setupGlowEffect() {
-        layer.shadowColor = UIColor(red: 0.4627, green: 0.8392, blue: 1.0, alpha: 1.0).cgColor
-        layer.shadowOpacity = 0.5
-        layer.shadowRadius = 10
-        layer.shadowOffset = CGSize(width: 0, height: 0)
+    private func setupButton() {
+        self.backgroundColor = .systemBlue
+        self.layer.cornerRadius = self.frame.size.width / 2
+        self.layer.shadowColor = UIColor.cyan.cgColor
+        self.layer.shadowRadius = 10
+        self.layer.shadowOpacity = 0.0
+        self.layer.shadowOffset = CGSize(width: 0, height: 0)
+        self.addTarget(self, action: #selector(toggleAnimation), for: .touchUpInside)
     }
 
-    func glowForSecond() {
-        let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = 0.5
-        animation.toValue = 1
-        animation.duration = animationDuration
-        animation.autoreverses = true
-        animation.repeatCount = 1
-        layer.add(animation, forKey: "glow")
-    }
-
-    func createRipple(at point: CGPoint) {
-        let circlePath = UIBezierPath(arcCenter: point, radius: 0, startAngle: 0, endAngle: 2 *.pi, clockwise: true)
-        let shapeLayer = CAShapeLayer()
-        shapeLayer.path = circlePath.cgPath
-        shapeLayer.fillColor = UIColor(red: 0.4627, green: 0.8392, blue: 1.0, alpha: 1.0).cgColor
-        shapeLayer.opacity = 0
-        layer.addSublayer(shapeLayer)
-
-        let animation = CABasicAnimation(keyPath: "transform.scale")
-        animation.fromValue = 0
-        animation.toValue = 1.5
-        animation.duration = animationDuration
-        animation.timingFunction =.easeOut
-        shapeLayer.add(animation, forKey: "scale")
-
-        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
-        opacityAnimation.fromValue = 0
-        opacityAnimation.toValue = 1
-        opacityAnimation.duration = animationDuration
-        opacityAnimation.timingFunction =.easeOut
-        shapeLayer.add(opacityAnimation, forKey: "opacity")
-
-        DispatchQueue.main.asyncAfter(deadline:.now() + animationDuration) {
-            shapeLayer.removeFromSuperlayer()
+    @objc private func toggleAnimation() {
+        if isAnimating {
+            stopGlowingAnimation()
+        } else {
+            startGlowingAnimation()
         }
+        isAnimating.toggle()
+    }
+
+    private func startGlowingAnimation() {
+        let glowAnimation = CABasicAnimation(keyPath: "shadowOpacity")
+        glowAnimation.fromValue = 0.0
+        glowAnimation.toValue = 1.0
+        glowAnimation.duration = 1.0
+        glowAnimation.autoreverses = true
+        glowAnimation.repeatCount = .infinity
+
+        self.layer.add(glowAnimation, forKey: "glowingAnimation")
+    }
+
+    private func stopGlowingAnimation() {
+        self.layer.removeAnimation(forKey: "glowingAnimation")
+    }
+}
+
+
+class RotatingGradientButton: UIButton {
+
+    private var glowingLayer: CAGradientLayer!
+    private var isAnimating = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupButton()
+        setupGlowingLayer()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupButton()
+        setupGlowingLayer()
+    }
+
+    private func setupButton() {
+        self.backgroundColor = .systemBlue
+        self.layer.cornerRadius = self.frame.size.width / 2
+        self.addTarget(self, action: #selector(toggleAnimation), for: .touchUpInside)
+    }
+
+    private func setupGlowingLayer() {
+        glowingLayer = CAGradientLayer()
+        glowingLayer.frame = self.bounds.insetBy(dx: -10, dy: -10)
+        glowingLayer.cornerRadius = self.layer.cornerRadius + 10
+        glowingLayer.colors = [
+            UIColor.clear.cgColor,
+            UIColor.cyan.withAlphaComponent(0.5).cgColor,
+            UIColor.cyan.cgColor,
+            UIColor.cyan.withAlphaComponent(0.5).cgColor,
+            UIColor.clear.cgColor
+        ]
+        glowingLayer.locations = [0, 0.2, 0.5, 0.8, 1]
+        glowingLayer.startPoint = CGPoint(x: 0.5, y: 0)
+        glowingLayer.endPoint = CGPoint(x: 0.5, y: 1)
+        self.layer.insertSublayer(glowingLayer, below: self.layer)
+    }
+
+    @objc private func toggleAnimation() {
+        if isAnimating {
+            stopGlowingAnimation()
+        } else {
+            startGlowingAnimation()
+        }
+        isAnimating.toggle()
+    }
+
+    private func startGlowingAnimation() {
+        let rotateAnimation = CABasicAnimation(keyPath: "transform.rotation")
+        rotateAnimation.fromValue = 0.0
+        rotateAnimation.toValue = CGFloat.pi * 2
+        rotateAnimation.duration = 4.0
+        rotateAnimation.repeatCount = .infinity
+
+        glowingLayer.add(rotateAnimation, forKey: "rotateAnimation")
+    }
+
+    private func stopGlowingAnimation() {
+        glowingLayer.removeAnimation(forKey: "rotateAnimation")
+    }
+}
+
+
+class ScalingFadingArcButton: UIButton {
+
+    private var arcLayer: CAShapeLayer!
+    private var isAnimating = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupButton()
+        setupArcLayer()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupButton()
+        setupArcLayer()
+    }
+
+    private func setupButton() {
+        self.backgroundColor = .systemBlue
+        self.layer.cornerRadius = self.frame.size.width / 2
+        self.addTarget(self, action: #selector(toggleAnimation), for: .touchUpInside)
+    }
+
+    private func setupArcLayer() {
+        arcLayer = CAShapeLayer()
+        let arcPath = UIBezierPath(ovalIn: self.bounds.insetBy(dx: -15, dy: -15))
+        arcLayer.path = arcPath.cgPath
+        arcLayer.fillColor = UIColor.clear.cgColor
+        arcLayer.strokeColor = UIColor.cyan.cgColor
+        arcLayer.lineWidth = 5
+        arcLayer.opacity = 0.0
+
+        self.layer.insertSublayer(arcLayer, below: self.layer)
+    }
+
+    @objc private func toggleAnimation() {
+        if isAnimating {
+            stopGlowingAnimation()
+        } else {
+            startGlowingAnimation()
+        }
+        isAnimating.toggle()
+    }
+
+    private func startGlowingAnimation() {
+        let scaleAnimation = CABasicAnimation(keyPath: "transform.scale")
+        scaleAnimation.fromValue = 0.8
+        scaleAnimation.toValue = 1.2
+        scaleAnimation.duration = 1.0
+        scaleAnimation.autoreverses = true
+        scaleAnimation.repeatCount = .infinity
+
+        let fadeAnimation = CABasicAnimation(keyPath: "opacity")
+        fadeAnimation.fromValue = 0.5
+        fadeAnimation.toValue = 1.0
+        fadeAnimation.duration = 1.0
+        fadeAnimation.autoreverses = true
+        fadeAnimation.repeatCount = .infinity
+
+        arcLayer.add(scaleAnimation, forKey: "scaleAnimation")
+        arcLayer.add(fadeAnimation, forKey: "fadeAnimation")
+    }
+
+    private func stopGlowingAnimation() {
+        arcLayer.removeAnimation(forKey: "scaleAnimation")
+        arcLayer.removeAnimation(forKey: "fadeAnimation")
     }
 }
